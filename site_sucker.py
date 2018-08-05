@@ -3,8 +3,9 @@ import re
 #.*?... match as few as possible until ...
 #(?=...) match, but do not return ...
 #\Z EOF
+# Given a start url, consumes all subpages of that site and stores them on the disk
  
-print("SERVANT ALPHA: RUNNING")
+print("Site Sucker: RUNNING")
 
 
 #Uses a regex to check the robots.txt and returns the URL:s we aren't allowed to crawl.
@@ -44,42 +45,42 @@ def forbidden(current_url, forbidden_urls):
             return True
     return False
 
-def crawl(initial_url, limit = 100):
+def crawl(initial_url):
     crawled = []
     blocked = []
     to_crawl = []
     to_crawl.append(initial_url)
 
     disallowed = check_permissions(initial_url)
-    
-    r2 = requests.get(initial_url)
-    f2 = open("./folder/wpage.html", 'wb+')
-    f2.write(r2.content)
-    f2.close()
 
-#    while to_crawl and limit > 0:
-#        current_url = to_crawl.pop(0)
-#        print("Crawling " + current_url)
-#
-#        if forbidden(current_url, disallowed):
-#            blocked.append(current_url)
-#            print("Tried to check " + current_url + " but lacked permission")
-#            continue
-#
-#        r = requests.get(current_url)
-#        crawled.append(current_url)
-#
-#        for url in re.findall('<a href="([^"]+)">', str(r.content)):
-#            print("looking at appending " + url)
-#            if url[0] == '/':
-#                url = current_url + url
-#            pattern = re.compile('https?')
-#            if pattern.match(url):
-#                to_crawl.append(url)
-#                limit = limit - 1
-#
-#    return crawled, blocked, to_crawl
+    while to_crawl:
+        #Get the topmost url in the list of urls to visit
+        current_url = to_crawl.pop(0)
+        print("Crawling " + current_url)
 
-#crawl('https://answers.splunk.com')
-crawl('https://www.fanfiction.net/')
+        #Check if visiting this url is disallowed by the robots.txt
+        if forbidden(current_url, disallowed):
+            blocked.append(current_url)
+            print("Tried to check " + current_url + " but lacked permission")
+            continue
+
+        #If not disallowed, get the data from the url
+        r = requests.get(current_url)
+        crawled.append(current_url)
+
+        #Grab all urls, including relative paths
+        for url in re.findall('<a href="([^"]+)">', str(r.content)):
+            if url[0] == '/':
+                url = current_url + url
+            #If the url is a subsite, add it to the list of things to crawl.
+            pattern = re.compile('https?')
+            if pattern.match(url):
+                to_crawl.append(url)
+
+    return crawled, blocked, to_crawl
+
+crawl('https://www.splunk.com')
+#crawl('https://www.youtube.com/watch?v=KPxSS1zHWwQ&start_radio=1&list=RDMMKPxSS1zHWwQ')
+#crawl('https://www.facebook.com')
+#crawl('https://www.mangareader.net')
 print("TASK COMPLETED")
