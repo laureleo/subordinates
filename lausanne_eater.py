@@ -4,15 +4,17 @@ import os
 import bs4
 import re
 import requests
+import json
 import datetime as dt
 from requests.compat import urljoin
 from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 #On using selenium http://stanford.edu/~mgorkove/cgi-bin/rpython_tutorials/Scraping_a_Webpage_Rendered_by_Javascript_Using_Python.php
 """
 @funct: takes an url, stores a copy of the site locally by downloading its html and a copy of all of the resources it links to.
 @param: an url
 """
-def consume(url):
+def update(url):
     print("Creating a directory to store the results in")
     make_directory(url)
 
@@ -22,15 +24,43 @@ def consume(url):
     print("Extracting urls to all objects for sale")
     links = regex_links(response)
 
+    articles = []
     for i, link in enumerate(links):
-        print("Loading article {}. Extracting content...".format(i))
-        url = link
+        print("Loading article {}. Extracting content...".format(i+1))
+        html = get_js_content_headless(link)
+        #html = get_js_content(link)
+        article = make_article(html, link)
+        articles.append(article)
 
-        html = get_js_content(url)
+    print("Storing all articles...")
+    filename = str(dt.datetime.now())
+    with open(filename + ".json", "w+") as write_file:
+            json.dump(articles, write_file)
 
-        content = extract_content(html)
-        print("PRICE: {}\nPLACE: {}\nTIME: {}\n".format(content[0],content[1],content[2]))
+def make_article(html, url):
+    title, price, place, time, description = extract_content(html)
 
+    article = {
+            "title": title,
+            "price": price,
+            "place": place,
+            "time": time,
+            "description": description,
+            "url": url
+            }
+
+    return article
+
+
+def get_js_content_headless(url):
+    options = webdriver.ChromeOptions()
+    options.add_argument('headless')
+
+    browser = webdriver.Chrome(chrome_options=options)
+    browser.get(url)
+    outer_html = browser.page_source
+    inner_html = browser.execute_script("return document.body.innerHTML")
+    return inner_html
 
 def get_js_content(url):
     browser = webdriver.Chrome()
@@ -56,6 +86,13 @@ def regex_links(response):
 def extract_content(html):
     soup = bs4.BeautifulSoup(html, 'html5lib')
 
+    title = soup.find('div',
+            attrs = {'class': '_l53'})
+    if not title:
+        title = 'N/A'
+    else:
+        title = title.text
+
     price = soup.find('div',
             attrs = {'class': '_l57'})
     if not price:
@@ -77,29 +114,37 @@ def extract_content(html):
     else:
         description = description.text
 
-    time = soup.find('span',
-            attrs = {'class': 'timestampContent'})
+    time = soup.find('abbr',
+            attrs = {'class': '_5ptz'})
     if not time:
         time = "N/A"
     else:
         time = calculate_time(time)
 
-    return(price, location, time, description)
+    return(title, price, location, time, description)
 
 def calculate_price(price):
     text = price.text
-    numbers = re.search('\d+.\d*', text).group(0)
-    cleaned = numbers.replace(",", "")
-    price = int(float(cleaned) * 9.06)
+    numbers = re.sub("\D", "", text) 
+    price = int(float(numbers) * 9.06)
     return price
 
 def calculate_time(time):
-    text = time.text
+    text = time.get('title')
+    # this was the case when running witout the headless at lest match = re.search('(?P<dd>\d+)\/(?P<mm>\d+)\/(?P<yyyy>\d+)\s(?P<hh>\d+):(?P<m2>\d+)', text)
+    match = re.search('(?P<yyyy>\d+)-(?P<mm>\d+)-(?P<dd>\d+)\s(?P<hh>\d+):(?P<m2>\d+)', text)
+    dd = int(match.group('dd'))
+    mm = int(match.group('mm'))
+    yyyy = int(match.group('yyyy'))
+    hh = int(match.group('hh'))
+    m2 = int(match.group('m2'))
+
+    date_article = dt.datetime(yyyy, mm, dd, hh, m2)
+    date_today = dt.datetime.today()
+    diff = date_today-date_article
+    time_elapsed = diff.days
     
-    return text
-
-
-
+    return time_elapsed
 
 
 """
@@ -157,5 +202,4 @@ def clone_content(response):
 
 
 
-#consume('https://www.facebook.com/groups/330486193693264/permalink/2093037470771452/?sale_post_id=2093037470771452')
-consume("https://www.facebook.com/groups/330486193693264/forsaleposts/?story_id=2097041673704365")
+update("https://www.facebook.com/groups/330486193693264/forsaleposts/?story_id=2097041673704365")
